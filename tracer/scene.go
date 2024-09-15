@@ -3,6 +3,7 @@ package tracer
 import (
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"strconv"
 
@@ -76,9 +77,18 @@ func (s *Scene) Render(outputPath string) {
 func (s *Scene) RenderFile(file *os.File) {
 	s.writeHeader(file)
 
+	const bufferSize = 1023 * 4
+
+	channCapacity := int32(math.Ceil(float64(s.height*s.width*3) / bufferSize))
+
+	chann := make(chan []byte, channCapacity)
+	done := make(chan bool)
+
+	go writeFile(chann, done, file)
+
 	p := value_objects.BuildPoint(0, 0)
 
-	bytes := make([]byte, 1023)
+	bytes := make([]byte, bufferSize)
 	pos := 0
 
 	for y := 0; y < s.height; y++ {
@@ -102,15 +112,28 @@ func (s *Scene) RenderFile(file *os.File) {
 			pos += 3
 
 			if pos == len(bytes) {
-				file.Write(bytes)
+				chann <- bytes
+				bytes = make([]byte, bufferSize)
 				pos = 0
 			}
 		}
 	}
 
 	if pos > 0 {
-		file.Write(bytes[0:pos])
+		chann <- bytes[0:pos]
 	}
+
+	close(chann)
+
+	<-done
+}
+
+func writeFile(chann chan []byte, done chan bool, file *os.File) {
+	for b := range chann {
+		file.Write(b)
+	}
+
+	done <- true
 }
 
 func (s *Scene) writeHeader(f *os.File) {
