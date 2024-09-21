@@ -80,7 +80,7 @@ func (c *Color) Add(c2 *Color) *Color {
 }
 
 func (c *Color) ToBytes(b []byte) {
-	b[0] = c.r
-	b[1] = c.g
 	b[2] = c.b
+	b[1] = c.g
+	b[0] = c.r
 }

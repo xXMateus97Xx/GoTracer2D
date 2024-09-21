@@ -32,6 +32,8 @@ func BuildSceneFromJson(path string) *Scene {
 		panic(err)
 	}
 
+	defer file.Close()
+
 	bytes, err := io.ReadAll(file)
 	if err != nil {
 		panic(err)
@@ -75,16 +77,17 @@ func (s *Scene) Render(outputPath string) {
 }
 
 func (s *Scene) RenderFile(file *os.File) {
-	s.writeHeader(file)
 
 	const bufferSize = 1023 * 4
 
-	channCapacity := int32(math.Ceil(float64(s.height*s.width*3) / bufferSize))
+	channCapacity := int32(math.Ceil(float64(s.height*s.width*3)/bufferSize)) + 1
 
 	chann := make(chan []byte, channCapacity)
 	done := make(chan bool)
 
 	go writeFile(chann, done, file)
+
+	s.writeHeader(chann)
 
 	p := value_objects.BuildPoint(0, 0)
 
@@ -136,10 +139,20 @@ func writeFile(chann chan []byte, done chan bool, file *os.File) {
 	done <- true
 }
 
-func (s *Scene) writeHeader(f *os.File) {
-	f.Write([]byte("P6\n"))
-	f.Write([]byte(strconv.Itoa(s.width)))
-	f.Write([]byte(" "))
-	f.Write([]byte(strconv.Itoa(s.height)))
-	f.Write([]byte("\n255\n"))
+func (s *Scene) writeHeader(chann chan []byte) {
+	h1 := []byte("P6\n")
+	h2 := []byte(" ")
+	h3 := []byte("\n255\n")
+
+	headerLength := len(h1) + len(h2) + len(h3) + 20
+
+	bytes := make([]byte, headerLength)
+
+	wrote := copy(bytes, h1)
+	wrote += copy(bytes[wrote:], []byte(strconv.Itoa(s.width)))
+	wrote += copy(bytes[wrote:], h2)
+	wrote += copy(bytes[wrote:], []byte(strconv.Itoa(s.height)))
+	wrote += copy(bytes[wrote:], h3)
+
+	chann <- bytes[0:wrote]
 }
